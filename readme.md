@@ -1,6 +1,5 @@
 # Campus Events Database System
 
-A comprehensive database management system for university campus events, handling event scheduling, venue allocation, sponsorship, and automated approval workflows.
 
 ## Project Overview
 
