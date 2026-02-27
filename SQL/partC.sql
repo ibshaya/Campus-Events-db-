@@ -1,0 +1,185 @@
+
+
+
+DROP DATABASE IF EXISTS UniversityEventsDB;
+CREATE DATABASE UniversityEventsDB;
+USE UniversityEventsDB;
+
+-- STRONG ENTITIES
+CREATE TABLE ACADEMIC_DEPARTMENT (
+    DeptCode VARCHAR(10) PRIMARY KEY,
+    DeptName VARCHAR(100) NOT NULL
+);
+
+CREATE TABLE VENUE (
+    VenueID INT PRIMARY KEY AUTO_INCREMENT,
+    Location VARCHAR(255) NOT NULL,
+    Capacity INT 
+);
+
+CREATE TABLE PERSON (
+    PersonID INT PRIMARY KEY AUTO_INCREMENT,
+    FullName VARCHAR(255) NOT NULL,
+    Email VARCHAR(255) UNIQUE NOT NULL
+);
+
+-- PERSON SUBCLASSES 
+CREATE TABLE FACULTY (
+    PersonID INT PRIMARY KEY,
+    RankTitle VARCHAR(50),
+    OfficeHours VARCHAR(100),
+    FOREIGN KEY (PersonID) REFERENCES PERSON(PersonID) ON DELETE CASCADE
+);
+
+CREATE TABLE STAFF (
+    PersonID INT PRIMARY KEY,
+    JobTitle VARCHAR(100),
+    ExtensionNumber VARCHAR(20),
+    FOREIGN KEY (PersonID) REFERENCES PERSON(PersonID) ON DELETE CASCADE
+);
+
+CREATE TABLE STUDENT (
+    PersonID INT PRIMARY KEY,
+    Major VARCHAR(50),
+    StudentLevel VARCHAR(20), 
+    FOREIGN KEY (PersonID) REFERENCES PERSON(PersonID) ON DELETE CASCADE
+);
+
+CREATE TABLE DEPENDENT (
+    PersonID INT PRIMARY KEY,
+    RelationType VARCHAR(50),
+    EmergencyContactPhone VARCHAR(20),
+    FOREIGN KEY (PersonID) REFERENCES PERSON(PersonID) ON DELETE CASCADE
+);
+
+-- VENUE SUBCLASSES 
+CREATE TABLE SPORTS_AREA (
+    VenueID INT PRIMARY KEY,
+    SurfaceType VARCHAR(50),
+    IsOutdoor BOOLEAN,
+    FOREIGN KEY (VenueID) REFERENCES VENUE(VenueID) ON DELETE CASCADE
+);
+
+CREATE TABLE LECTURE_HALL (
+    VenueID INT PRIMARY KEY,
+    ProjectorType VARCHAR(50),
+    SeatCount INT,
+    FOREIGN KEY (VenueID) REFERENCES VENUE(VenueID) ON DELETE CASCADE
+);
+
+CREATE TABLE CONFERENCE_HALL (
+    VenueID INT PRIMARY KEY,
+    CateringFacilities BOOLEAN,
+    MicrophoneCount INT,
+    FOREIGN KEY (VenueID) REFERENCES VENUE(VenueID) ON DELETE CASCADE
+);
+
+CREATE TABLE PUBLIC_SPACE (
+    VenueID INT PRIMARY KEY,
+    IsCovered BOOLEAN,
+    PermitRequired BOOLEAN,
+    FOREIGN KEY (VenueID) REFERENCES VENUE(VenueID) ON DELETE CASCADE
+);
+
+-- EVENT ENTITY 
+CREATE TABLE EVENT (
+    EventID INT PRIMARY KEY AUTO_INCREMENT,
+    EventName VARCHAR(200) NOT NULL,
+    StartDateTime DATETIME NOT NULL,
+    EndDateTime DATETIME NOT NULL,
+    ApprovalStatus ENUM('Pending', 'Approved', 'Rejected', 'Cancelled') DEFAULT 'Pending',
+    
+    -- Req 7
+    RejectionJustification VARCHAR(255), 
+    
+    VenueID INT,
+    DeptCode VARCHAR(10),
+    OrganizerPersonID INT,
+    
+    FOREIGN KEY (VenueID) REFERENCES VENUE(VenueID),
+    FOREIGN KEY (DeptCode) REFERENCES ACADEMIC_DEPARTMENT(DeptCode),
+    FOREIGN KEY (OrganizerPersonID) REFERENCES PERSON(PersonID),
+
+    -- Req 9
+    CONSTRAINT Chk_Duration CHECK (DATEDIFF(EndDateTime, StartDateTime) <= 3),
+    CONSTRAINT Chk_StartTime CHECK (CAST(StartDateTime AS TIME) >= '08:00:00'),
+    CONSTRAINT Chk_EndTime CHECK (CAST(EndDateTime AS TIME) <= '23:59:59')
+);
+
+-- EVENT SUBCLASSES
+CREATE TABLE SPORTS_EVENT (
+    EventID INT PRIMARY KEY,
+    SportType VARCHAR(50),
+    LeagueName VARCHAR(100),
+    FOREIGN KEY (EventID) REFERENCES EVENT(EventID) ON DELETE CASCADE
+);
+
+CREATE TABLE SOCIAL_EVENT (
+    EventID INT PRIMARY KEY,
+    FoodProvided BOOLEAN,
+    FOREIGN KEY (EventID) REFERENCES EVENT(EventID) ON DELETE CASCADE
+);
+
+CREATE TABLE RELIGIOUS_EVENT (
+    EventID INT PRIMARY KEY,
+    Denomination VARCHAR(50),
+    OfficiantName VARCHAR(100),
+    FOREIGN KEY (EventID) REFERENCES EVENT(EventID) ON DELETE CASCADE
+);
+
+CREATE TABLE ACADEMIC_EVENT (
+    EventID INT PRIMARY KEY,
+    KeynoteSpeaker VARCHAR(100),
+    PaperSubmissionDeadline DATETIME,
+    FOREIGN KEY (EventID) REFERENCES EVENT(EventID) ON DELETE CASCADE
+);
+
+-- WEAK ENTITY 
+CREATE TABLE SUB_EVENT (
+    EventID INT,
+    SubEventID INT,
+    SubEventName VARCHAR(150),
+    StartTime DATETIME,
+    AllocatedTime VARCHAR(50), 
+    InChargePersonID INT,
+    
+    PRIMARY KEY (EventID, SubEventID),
+    FOREIGN KEY (EventID) REFERENCES EVENT(EventID) ON DELETE CASCADE,
+    FOREIGN KEY (InChargePersonID) REFERENCES PERSON(PersonID)
+);
+
+-- VIEW 
+CREATE VIEW ApprovedEventDetails AS
+SELECT 
+    E.EventName,
+    E.StartDateTime,
+    V.Location,
+    P.FullName AS Organizer,
+    D.DeptName
+FROM EVENT E
+JOIN VENUE V ON E.VenueID = V.VenueID
+JOIN PERSON P ON E.OrganizerPersonID = P.PersonID
+JOIN ACADEMIC_DEPARTMENT D ON E.DeptCode = D.DeptCode
+WHERE E.ApprovalStatus = 'Approved';
+
+-- Req 8
+CREATE TABLE EMAIL_LOG (
+    LogID INT AUTO_INCREMENT PRIMARY KEY,
+    EventID INT,
+    Message VARCHAR(255),
+    SentDate DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+DELIMITER //
+
+CREATE TRIGGER trg_EventApproved
+AFTER UPDATE ON EVENT
+FOR EACH ROW
+BEGIN
+    IF NEW.ApprovalStatus = 'Approved' AND OLD.ApprovalStatus != 'Approved' THEN
+        INSERT INTO EMAIL_LOG (EventID, Message)
+        VALUES (NEW.EventID, 'Email sent to Maintenance, Office Services, Security: Event Approved.');
+    END IF;
+END //
+
+DELIMITER ;
